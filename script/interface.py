@@ -193,6 +193,7 @@ class InterfaceError(Exception):
 def main():
     print('RFT646A01 interface started')
     interface = RFT646A01(sys.argv[1])
+    interface._master = pysoem.Master()
 
     if len(sys.argv) > 1:
         try:
