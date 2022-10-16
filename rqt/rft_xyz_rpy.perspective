@@ -41,7 +41,7 @@
                 },
                 "topics": {
                   "type": "repr",
-                  "repr": "[u'/RFT646A01/FT_data/twist/linear/z', u'/RFT646A01/FT_data/twist/linear/y', u'/RFT646A01/FT_data/twist/linear/x']"
+                  "repr": "[u'/RFT64/FT_data/wrench/force/z', u'/RFT64/FT_data/wrench/force/y', u'/RFT64/FT_data/wrench/force/x']"
                 },
                 "y_limits": {
                   "type": "repr",
@@ -88,7 +88,7 @@
                 },
                 "topics": {
                   "type": "repr",
-                  "repr": "[u'/RFT646A01/FT_data/twist/angular/y', u'/RFT646A01/FT_data/twist/angular/x', u'/RFT646A01/FT_data/twist/angular/z']"
+                  "repr": "[u'/RFT64/FT_data/wrench/torque/y', u'/RFT64/FT_data/wrench/torque/x', u'/RFT64/FT_data/wrench/torque/z']"
                 },
                 "y_limits": {
                   "type": "repr",

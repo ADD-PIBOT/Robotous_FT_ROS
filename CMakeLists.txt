@@ -7,12 +7,23 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
+  message_generation
+)
+
+add_service_files(
+  FILES
+  set_LPF_rate.srv
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
 )
 
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES rft64_6a01_ros_interface
- CATKIN_DEPENDS geometry_msgs roscpp rospy sensor_msgs std_msgs
+ CATKIN_DEPENDS geometry_msgs roscpp rospy sensor_msgs std_msgs message_runtime
 #  DEPENDS system_lib
 )
 
