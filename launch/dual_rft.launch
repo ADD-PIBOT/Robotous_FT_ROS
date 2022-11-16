@@ -1,0 +1,3 @@
+<launch>
+    <node name="rft_rqt_plot" pkg="rqt_gui" type="rqt_gui" args=" --perspective-file $(find rft64_6a01_ros_interface)/rqt/yoke_rudder.perspective"/>
+</launch>

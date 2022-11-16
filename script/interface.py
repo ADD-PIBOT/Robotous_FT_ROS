@@ -54,21 +54,21 @@ class RFT64:
         self.collapse_time = 0.0
 
         #ROS publisher
-        self.Model_name_pub = rospy.Publisher("/RFT64/Model_name", String, queue_size=1)
-        self.Serial_number_pub = rospy.Publisher("/RFT64/Serial_number", String, queue_size=1)
-        self.Firmware_version_pub = rospy.Publisher("/RFT64/Firmware_version", String, queue_size=1)
+        self.Model_name_pub = rospy.Publisher("RFT64/Model_name", String, queue_size=1)
+        self.Serial_number_pub = rospy.Publisher("RFT64/Serial_number", String, queue_size=1)
+        self.Firmware_version_pub = rospy.Publisher("RFT64/Firmware_version", String, queue_size=1)
 
-        self.Bias_pub = rospy.Publisher("/RFT64/Bias", Int16, queue_size=1)
-        self.LPF_setup_pub = rospy.Publisher("/RFT64/LPF_setup", Int16, queue_size=1)
+        self.Bias_pub = rospy.Publisher("RFT64/Bias", Int16, queue_size=1)
+        self.LPF_setup_pub = rospy.Publisher("RFT64/LPF_setup", Int16, queue_size=1)
 
         # self.Overload_count_pub = rospy.Publisher("/RFT64/Overload_count", Int16MultiArray, queue_size=1)
-        self.Overload_count_pub = rospy.Publisher("/RFT64/Overload_count", Wrench, queue_size=1)
+        self.Overload_count_pub = rospy.Publisher("RFT64/Overload_count", Wrench, queue_size=1)
 
         # self.FT_data_pub = rospy.Publisher("/RFT64/FT_data", TwistStamped, queue_size=1)
         # self.FTS_status_pub = rospy.Publisher("/RFT64/FTS_status", TwistStamped, queue_size=1)
-        self.FT_data_pub = rospy.Publisher("/RFT64/FT_data", WrenchStamped, queue_size=1)
-        self.FTS_status_pub = rospy.Publisher("/RFT64/FTS_status", WrenchStamped, queue_size=1)
-        self.Temperature_pub = rospy.Publisher("/RFT64/Temperature", Float64, queue_size=1)
+        self.FT_data_pub = rospy.Publisher("RFT64/FT_data", WrenchStamped, queue_size=1)
+        self.FTS_status_pub = rospy.Publisher("RFT64/FTS_status", WrenchStamped, queue_size=1)
+        self.Temperature_pub = rospy.Publisher("RFT64/Temperature", Float64, queue_size=1)
 
         self.set_LPF_server = rospy.Service("set_FT_LPF", set_LPF_rate, self.set_ft_rate)
 
