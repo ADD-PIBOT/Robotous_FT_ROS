@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_service_files(
   FILES
   set_LPF_rate.srv
+  set_as_bias.srv
 )
 
 generate_messages(

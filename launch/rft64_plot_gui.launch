@@ -1,10 +1,10 @@
 <launch>
   <!-- <arg name="network_interface" default="enx705dccfe7579"/> -->
   <!-- <arg name="network_interface" default="enx00e04cca5466"/>  DOCKHUB -->
-  <!-- <arg name="network_interface" default="enx0c37961999e8"/> USB Ethernet -->
-  <arg name="network_interface" default="enxd85ed38894a9"/> <!--  AERO -->
+  <arg name="network_interface" default="enx0c37961999e8"/> <!-- USB Ethernet -->
+  <!-- <arg name="network_interface" default="enxd85ed38894a9"/>  AERO -->
   <arg name="use_gui" default="False"/>
-  <arg name="ns" default="tf"/>
+  <arg name="ns" default="RFT80"/>
 
   <group ns="$(arg ns)">
     <node name="rft_interface_node" pkg="rft64_6a01_ros_interface" type="interface.py" output="screen" args="$(arg network_interface)"/>
