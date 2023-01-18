@@ -1,7 +1,8 @@
 <launch>
   <!-- <arg name="network_interface" default="enx705dccfe7579"/> -->
   <!-- <arg name="network_interface" default="enx00e04cca5466"/>  DOCKHUB -->
-  <arg name="network_interface" default="enx0c37961999e8"/> <!--  AERO -->
+  <!-- <arg name="network_interface" default="enx0c37961999e8"/> USB Ethernet -->
+  <arg name="network_interface" default="enxd85ed38894a9"/> <!--  AERO -->
   <arg name="use_gui" default="False"/>
   <arg name="ns" default="tf"/>
 
