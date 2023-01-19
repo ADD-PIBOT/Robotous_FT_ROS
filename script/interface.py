@@ -29,16 +29,15 @@ class RFT64:
     TFSENSOR_PRODUCT_CODE = 0x00000003
 
     def __init__(self, ifname):
-        rospy.init_node('RFT64')
+        rospy.init_node('robotous_ft')
         # rospy.init_node('RFT64', anonymous=True)
-        self.rate = rospy.Rate(500)
+        self.rate = rospy.Rate(1000)
 
         self._ifname = ifname
         self._pd_thread_stop_event = threading.Event()
         self._ch_thread_stop_event = threading.Event()
-        self._actual_wkc = 0
         self._master = pysoem.Master()
-        self._master.in_op = False
+        self._master.in_op = True
         self._master.do_check_state = False
         SlaveSet = namedtuple('SlaveSet', 'name product_code config_func')
         self._expected_slave_layout = {0: SlaveSet('RFT64', self.TFSENSOR_PRODUCT_CODE, self.tfsensor_setup)}
@@ -47,27 +46,8 @@ class RFT64:
 
         self._bias = Wrench()
 
-        # ROS publisher
-        self.Model_name_pub = rospy.Publisher("RFT64/Model_name", String, queue_size=1)
-        self.Serial_number_pub = rospy.Publisher("RFT64/Serial_number", String, queue_size=1)
-        self.Firmware_version_pub = rospy.Publisher("RFT64/Firmware_version", String, queue_size=1)
-
-        self.Biased_pub = rospy.Publisher("RFT64/Bias", Int16, queue_size=1)
-        self.LPF_setup_pub = rospy.Publisher("RFT64/LPF_setup", Int16, queue_size=1)
-
-        self.Overload_count_pub = rospy.Publisher("RFT64/Overload_count", Wrench, queue_size=1)
-
-        self.FT_data_pub = rospy.Publisher("RFT64/FT_data", WrenchStamped, queue_size=1)
-        self.FTS_status_pub = rospy.Publisher("RFT64/Overloaded", WrenchStamped, queue_size=1)
-        self.Temperature_pub = rospy.Publisher("RFT64/Temperature", Float64, queue_size=1)
-
-        self.set_LPF_server = rospy.Service("set_FT_LPF", set_LPF_rate, self.set_ft_rate)
-        self.set_bias_server = rospy.Service("set_as_bias", set_as_bias, self.set_as_bias)
-        self.unset_bias_server = rospy.Service("unset_bias", set_as_bias, self.unset_bias)
-
-        # self._master = pysoem.Master()
         self._master.open(self._ifname)
-
+        
         if not self._master.config_init() > 0:
             self._master.close()
             raise InterfaceError('no slave found')
@@ -80,7 +60,33 @@ class RFT64:
             slave.config_func = self._expected_slave_layout[i].config_func
             slave.is_lost = False
 
-        self._master.config_map()
+        print("Sensor initalized with PDO map: {}", self._master.config_map())
+
+        self._master.write_state()
+        self.slave.sdo_write(0x7000, 1, struct.pack('<I', 0x0000000B))
+        
+        # if self._master.state_check(pysoem.SAFEOP_STATE, 50000) != pysoem.SAFEOP_STATE:
+        #     self._master.close()
+        #     raise InterfaceError('not all slaves reached SAFEOP state')
+
+        # ROS publisher
+        self.Model_name_pub = rospy.Publisher("Model_name", String, queue_size=1)
+        self.Serial_number_pub = rospy.Publisher("Serial_number", String, queue_size=1)
+        self.Firmware_version_pub = rospy.Publisher("Firmware_version", String, queue_size=1)
+
+        self.Biased_pub = rospy.Publisher("Bias", Int16, queue_size=1)
+        self.LPF_setup_pub = rospy.Publisher("LPF_setup", Int16, queue_size=1)
+
+        self.Overload_count_pub = rospy.Publisher("Overload_count", Wrench, queue_size=1)
+
+        self.FT_data_pub = rospy.Publisher("FT_data", WrenchStamped, queue_size=1)
+        self.FTS_status_pub = rospy.Publisher("Overloaded", WrenchStamped, queue_size=1)
+        self.Temperature_pub = rospy.Publisher("Temperature", Float64, queue_size=1)
+
+        self.set_LPF_server = rospy.Service("set_FT_LPF", set_LPF_rate, self.set_ft_rate)
+        self.set_bias_server = rospy.Service("set_as_bias", set_as_bias, self.set_as_bias)
+        self.unset_bias_server = rospy.Service("unset_bias", set_as_bias, self.unset_bias)
+
 
         print('RFT64 interface started')
 
@@ -182,11 +188,13 @@ class RFT64:
         self.overload_count_Ty = int.from_bytes(slave.sdo_read(0x2002, 5), byteorder='little', signed=False)
         self.overload_count_Tz = int.from_bytes(slave.sdo_read(0x2002, 6), byteorder='little', signed=False)
 
-        slave.dc_sync(1, 10000000)
+        slave.dc_sync(True, 1000000, 0, 1000000)
 
     def getSensor(self):
+        # self._master.read_state()
+        self._master.receive_processdata(500)
+        # self._master.write_state()
         ### TxPDO ###
-
         # Force-torque
         TxPDO_Fx = ctypes.c_float.from_buffer_copy(self.slave.sdo_read(0x6000, 1))
         TxPDO_Fy = ctypes.c_float.from_buffer_copy(self.slave.sdo_read(0x6000, 2))
@@ -241,8 +249,19 @@ class RFT64:
         self.FTS_status_pub.publish(FTS_status_msg)
         self.Temperature_pub.publish(temperature_msg)
 
+    def getSensorPDO(self):
+        transmits = self._master.send_processdata()
+        self._master.write_state()
+        self._master.read_state()
+        if(transmits > 0):
+            pdos = self._master.receive_processdata()
+            # print(pdos)
+            # if(pdos > 1):
+            Fx, Fy, Fz, Tx, Ty, Tz, FT_Status, Temp = struct.unpack('ffffffHf', pdos)
+            print(Fz)
+
     def run(self):
-        # time1 = rospy.Time.now().to_sec()
+        time1 = rospy.Time.now().to_sec()
         # self._master = pysoem.Master()
         # self._master.open(self._ifname)
 
@@ -262,13 +281,14 @@ class RFT64:
         # print(i)
         # self._expected_slave_layout[0].config_func
         self.getSensor()
+        # self.getSensorPDO()
         # is_lost = False
         # for i, slave in enumerate(self._master.slaves):
         #     print(i)
         #     slave.config_func = self._expected_slave_layout[0].config_func
         #     slave.is_lost = False
-        # time2 = rospy.Time.now().to_sec()
-        # print(time2-time1)
+        time2 = rospy.Time.now().to_sec()
+        print(time2-time1)
 
         # self._master.close()
 
@@ -278,18 +298,13 @@ class InterfaceError(Exception):
         self.message = message
 
 def main():
-    interface = RFT64(sys.argv[1])
-
     if len(sys.argv) > 1:
-        # interface._master = pysoem.Master()
-        interface._master.open(sys.argv[1])
+        interface = RFT64(sys.argv[1])
         try:
             while not rospy.is_shutdown():
-                interface.getSensor()
+                # interface.getSensor()
+                interface.run()
                 interface.pub_sensor_info()
-                # model_name_msg = String()
-                # model_name_msg.data = interface.Model_name
-                # interface.Model_name_pub.publish(model_name_msg)
                 interface.rate.sleep()
         except InterfaceError as expt:
             print('RFT64 failed: ' + expt.message)

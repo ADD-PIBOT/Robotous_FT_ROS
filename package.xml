@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>rft64_6a01_ros_interface</name>
-  <version>0.0.0</version>
+  <version>0.1.0</version>
   <description>The rft64_6a01_ros_interface package</description>
 
-  <maintainer email="todo@todo.todo">todo</maintainer>
+  <maintainer email="sungjae_min@kaist.ac.kr">Sungjae Min</maintainer>
 
   <license>TODO</license>
 
