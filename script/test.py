@@ -1,6 +1,6 @@
-"""Toggles the state of a digital output on an EL1259.
+"""Prints the analog-to-digital converted voltage of an EL3002.
 
-Usage: python basic_example.py <adapter>
+Usage: python minimal_example.py <adapter>
 
 This example expects a physical slave layout according to
 _expected_slave_layout, see below.
@@ -9,212 +9,146 @@ _expected_slave_layout, see below.
 import sys
 import struct
 import time
-import threading
-
-from collections import namedtuple
+import collections
 
 import pysoem
 
 
-class BasicExample:
+class MinimalExample:
 
+    # BECKHOFF_VENDOR_ID = 0x0002
+    # EK1100_PRODUCT_CODE = 0x044c2c52
+    # EL3002_PRODUCT_CODE = 0x0bba3052
     BECKHOFF_VENDOR_ID = 0x000008EE
-    EK1100_PRODUCT_CODE = 0x00000003
+    TFSENSOR_PRODUCT_CODE = 0x00000003
+
+    CU1128_VENDOR_ID = 0x00000002
+    CU1128_PRODUCT_CODE = 0x04685432
 
     def __init__(self, ifname):
         self._ifname = ifname
-        self._pd_thread_stop_event = threading.Event()
-        self._ch_thread_stop_event = threading.Event()
-        self._actual_wkc = 0
         self._master = pysoem.Master()
-        self._master.in_op = False
-        self._master.do_check_state = False
-        SlaveSet = namedtuple('SlaveSet', 'name product_code config_func')
-        self._expected_slave_layout = {0: SlaveSet('RFT64', self.EK1100_PRODUCT_CODE, None)}
+        SlaveSet = collections.namedtuple(
+            'SlaveSet', 'slave_name product_code config_func')
+        # self._expected_slave_mapping = {0: SlaveSet('EK1100', self.EK1100_PRODUCT_CODE, None),
+        #                                 1: SlaveSet('EL3002', self.EL3002_PRODUCT_CODE, self.el3002_setup)}
+        self._expected_slave_layout = {0: SlaveSet('CU1128', self.CU1128_PRODUCT_CODE, self.cu1128_setup)
+                                        ,1: SlaveSet('RFT64', self.TFSENSOR_PRODUCT_CODE, self.tfsensor_setup)
+                                        ,2: SlaveSet('CU1128-C', self.CU1128_PRODUCT_CODE, self.cu1128_setup)
+                                        ,3: SlaveSet('CU1128-D', self.CU1128_PRODUCT_CODE, self.cu1128_setup)}
 
-    # def el1259_setup(self, slave_pos):
-    #     slave = self._master.slaves[slave_pos]
+    def cu1128_setup(self, slave_pos):
+        slave = self._master.slaves[slave_pos]
 
-    #     slave.sdo_write(0x8001, 2, struct.pack('B', 1))
+        # slave.sdo_write(0x1c12, 0, struct.pack('B', 0))
 
-    #     rx_map_obj = [0x1603,
-    #                   0x1607,
-    #                   0x160B,
-    #                   0x160F,
-    #                   0x1611,
-    #                   0x1617,
-    #                   0x161B,
-    #                   0x161F,
-    #                   0x1620,
-    #                   0x1621,
-    #                   0x1622,
-    #                   0x1623,
-    #                   0x1624,
-    #                   0x1625,
-    #                   0x1626,
-    #                   0x1627]
-    #     rx_map_obj_bytes = struct.pack(
-    #         'Bx' + ''.join(['H' for i in range(len(rx_map_obj))]), len(rx_map_obj), *rx_map_obj)
-    #     slave.sdo_write(0x1c12, 0, rx_map_obj_bytes, True)
+        # map_1c13_bytes = struct.pack('BxHH', 2, 0x1A01, 0x1A03)
+        # slave.sdo_write(0x1c13, 0, map_1c13_bytes, True)
 
-    #     slave.dc_sync(1, 10000000)
+    def tfsensor_setup(self, slave_pos):
+        print("Initialize sensor...")
+        slave = self._master.slaves[slave_pos]
+        self.slave = slave
 
-    def _processdata_thread(self):
-        while not self._pd_thread_stop_event.is_set():
-            self._master.send_processdata()
-            self._actual_wkc = self._master.receive_processdata(10000)
-            if not self._actual_wkc == self._master.expected_wkc:
-                print('incorrect wkc')
-            time.sleep(0.01)
+        ### Sensor Information ###
+        name_list = slave.sdo_read(0x2000, 1).decode('utf-8')
+        self.Model_name = name_list.rstrip('\0')
+        self.Serial_number = slave.sdo_read(0x2000, 2).decode('utf-8')
+        self.Firmware_version = slave.sdo_read(0x2000, 3).decode('utf-8')
 
-    def _pdo_update_loop(self):
+        ### Sensor Setup ###
+        self.Biased = int.from_bytes(slave.sdo_read(0x2001, 1), byteorder='little', signed=False)
+        self.LPF_setup = int.from_bytes(slave.sdo_read(0x2001, 2), byteorder='little', signed=False)
 
-        self._master.in_op = True
+        ### Overload Counter ###
+        self.overload_count_Fx = int.from_bytes(slave.sdo_read(0x2002, 1), byteorder='little', signed=False)
+        self.overload_count_Fy = int.from_bytes(slave.sdo_read(0x2002, 2), byteorder='little', signed=False)
+        self.overload_count_Fz = int.from_bytes(slave.sdo_read(0x2002, 3), byteorder='little', signed=False)
+        self.overload_count_Tx = int.from_bytes(slave.sdo_read(0x2002, 4), byteorder='little', signed=False)
+        self.overload_count_Ty = int.from_bytes(slave.sdo_read(0x2002, 5), byteorder='little', signed=False)
+        self.overload_count_Tz = int.from_bytes(slave.sdo_read(0x2002, 6), byteorder='little', signed=False)
 
-        output_len = len(self._master.slaves[0].output)
-        
-
-        # tmp = bytearray([0 for i in range(output_len)])
-
-        # toggle = True
-        try:
-            while True:
-                print(self._master.slaves[0].output)
-        #         if toggle:
-        #             tmp[0] = 0x00
-        #         else:
-        #             tmp[0] = 0x02
-        #         self._master.slaves[0].output = bytes(tmp)
-
-        #         toggle ^= True
-
-        #         time.sleep(1)
-
-        except KeyboardInterrupt:
-            # ctrl-C abort handling
-            print('stopped')
-
+        slave.dc_sync(True, 1000000, 0, 1000000)
 
     def run(self):
 
         self._master.open(self._ifname)
 
-        if not self._master.config_init() > 0:
-            self._master.close()
-            raise BasicExampleError('no slave found')
+        # config_init returns the number of slaves found
+        if self._master.config_init() > 0:
 
-        for i, slave in enumerate(self._master.slaves):
-            if not ((slave.man == self.BECKHOFF_VENDOR_ID) and
-                    (slave.id == self._expected_slave_layout[i].product_code)):
-                self._master.close()
-                raise BasicExampleError('unexpected slave layout')
-            slave.config_func = self._expected_slave_layout[i].config_func
-            slave.is_lost = False
+            print("{} slaves found and configured".format(
+                len(self._master.slaves)))
 
-        self._master.config_map()
+            for i, slave in enumerate(self._master.slaves):
+                assert((slave.man == self.BECKHOFF_VENDOR_ID) or (slave.man == self.CU1128_VENDOR_ID))
+                assert(
+                    slave.id == self._expected_slave_mapping[i].product_code)
+                slave.config_func = self._expected_slave_mapping[i].config_func
 
-        if self._master.state_check(pysoem.SAFEOP_STATE, 50000) != pysoem.SAFEOP_STATE:
-            self._master.close()
-            raise BasicExampleError('not all slaves reached SAFEOP state')
+            # PREOP_STATE to SAFEOP_STATE request - each slave's config_func is called
+            self._master.config_map()
 
-        self._master.state = pysoem.OP_STATE
-
-        check_thread = threading.Thread(target=self._check_thread)
-        check_thread.start()
-        proc_thread = threading.Thread(target=self._processdata_thread)
-        proc_thread.start()
-        
-        # send one valid process data to make outputs in slaves happy
-        self._master.send_processdata()
-        self._master.receive_processdata(2000)
-        # request OP state for all slaves
-        
-        self._master.write_state()
-
-        all_slaves_reached_op_state = False
-        for i in range(40):
-            self._master.state_check(pysoem.OP_STATE, 50000)
-            if self._master.state == pysoem.OP_STATE:
-                all_slaves_reached_op_state = True
-                break
-
-        if all_slaves_reached_op_state:
-            self._pdo_update_loop()
-
-        self._pd_thread_stop_event.set()
-        self._ch_thread_stop_event.set()
-        proc_thread.join()
-        check_thread.join()
-        self._master.state = pysoem.INIT_STATE
-        # request INIT state for all slaves
-        self._master.write_state()
-        self._master.close()
-
-        if not all_slaves_reached_op_state:
-            raise BasicExampleError('not all slaves reached OP state')
-
-    @staticmethod
-    def _check_slave(slave, pos):
-        if slave.state == (pysoem.SAFEOP_STATE + pysoem.STATE_ERROR):
-            print(
-                'ERROR : slave {} is in SAFE_OP + ERROR, attempting ack.'.format(pos))
-            slave.state = pysoem.SAFEOP_STATE + pysoem.STATE_ACK
-            slave.write_state()
-        elif slave.state == pysoem.SAFEOP_STATE:
-            print(
-                'WARNING : slave {} is in SAFE_OP, try change to OPERATIONAL.'.format(pos))
-            slave.state = pysoem.OP_STATE
-            slave.write_state()
-        elif slave.state > pysoem.NONE_STATE:
-            if slave.reconfig():
-                slave.is_lost = False
-                print('MESSAGE : slave {} reconfigured'.format(pos))
-        elif not slave.is_lost:
-            slave.state_check(pysoem.OP_STATE)
-            if slave.state == pysoem.NONE_STATE:
-                slave.is_lost = True
-                print('ERROR : slave {} lost'.format(pos))
-        if slave.is_lost:
-            if slave.state == pysoem.NONE_STATE:
-                if slave.recover():
-                    slave.is_lost = False
-                    print(
-                        'MESSAGE : slave {} recovered'.format(pos))
-            else:
-                slave.is_lost = False
-                print('MESSAGE : slave {} found'.format(pos))
-    
-    def _check_thread(self):
-
-        while not self._ch_thread_stop_event.is_set():
-            if self._master.in_op and ((self._actual_wkc < self._master.expected_wkc) or self._master.do_check_state):
-                self._master.do_check_state = False
+            # wait 50 ms for all slaves to reach SAFE_OP state
+            if self._master.state_check(pysoem.SAFEOP_STATE, 50000) != pysoem.SAFEOP_STATE:
                 self._master.read_state()
-                for i, slave in enumerate(self._master.slaves):
-                    if slave.state != pysoem.OP_STATE:
-                        self._master.do_check_state = True
-                        BasicExample._check_slave(slave, i)
-                if not self._master.do_check_state:
-                    print('OK : all slaves resumed OPERATIONAL.')
-            time.sleep(0.01)
+                for slave in self._master.slaves:
+                    if not slave.state == pysoem.SAFEOP_STATE:
+                        print('{} did not reach SAFEOP state'.format(slave.name))
+                        print('al status code {} ({})'.format(hex(slave.al_status),
+                                                              pysoem.al_status_code_to_string(slave.al_status)))
+                raise Exception('not all slaves reached SAFEOP state')
 
+            self._master.state = pysoem.OP_STATE
+            self._master.write_state()
 
-class BasicExampleError(Exception):
-    def __init__(self, message):
-        super(BasicExampleError, self).__init__(message)
-        self.message = message
+            self._master.state_check(pysoem.OP_STATE, 50000)
+            if self._master.state != pysoem.OP_STATE:
+                self._master.read_state()
+                for slave in self._master.slaves:
+                    if not slave.state == pysoem.OP_STATE:
+                        print('{} did not reach OP state'.format(slave.name))
+                        print('al status code {} ({})'.format(hex(slave.al_status),
+                                                              pysoem.al_status_code_to_string(slave.al_status)))
+                raise Exception('not all slaves reached OP state')
+
+            try:
+                while 1:
+                    # free run cycle
+                    self._master.send_processdata()
+                    self._master.receive_processdata(2000)
+
+                    volgage_ch_1_el3002_as_bytes = self._master.slaves[1].input
+                    volgage_ch_1_el3002_as_int16 = struct.unpack(
+                        'hh', volgage_ch_1_el3002_as_bytes)[0]
+                    voltage = volgage_ch_1_el3002_as_int16 * 10 / 0x8000
+                    print('EL3002 Ch 1 PDO: {:#06x}; Voltage: {:.4}'.format(
+                        volgage_ch_1_el3002_as_int16, voltage))
+
+                    time.sleep(1)
+
+            except KeyboardInterrupt:
+                # ctrl-C abort handling
+                print('stopped')
+
+            self._master.state = pysoem.INIT_STATE
+            # request INIT state for all slaves
+            self._master.write_state()
+            self._master.close()
+        else:
+            print('slaves not found')
 
 
 if __name__ == '__main__':
 
-    print('basic_example started')
+    print('minimal_example')
 
     if len(sys.argv) > 1:
         try:
-            BasicExample(sys.argv[1]).run()
-        except BasicExampleError as expt:
-            print('basic_example failed: ' + expt.message)
+            MinimalExample(sys.argv[1]).run()
+        except Exception as expt:
+            print(expt)
             sys.exit(1)
     else:
-        print('usage: basic_example ifname')
+        print('usage: minimal_example ifname')
         sys.exit(1)

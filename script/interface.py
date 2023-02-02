@@ -24,36 +24,38 @@ from std_msgs.msg import String
 from rft64_6a01_ros_interface.srv import set_LPF_rate, set_LPF_rateResponse
 from rft64_6a01_ros_interface.srv import set_as_bias, set_as_biasResponse
 
-class RFT64:
+class ROBOTOUS_FT:
     BECKHOFF_VENDOR_ID = 0x000008EE
     TFSENSOR_PRODUCT_CODE = 0x00000003
 
-    def __init__(self, ifname):
-        rospy.init_node('robotous_ft')
-        # rospy.init_node('RFT64', anonymous=True)
-        self.rate = rospy.Rate(1000)
+    CU1128_VENDOR_ID = 0x00000002
+    CU1128_PRODUCT_CODE = 0x04685432
 
+    def __init__(self, ifname):
         self._ifname = ifname
         self._pd_thread_stop_event = threading.Event()
         self._ch_thread_stop_event = threading.Event()
-        self._master = pysoem.Master()
-        self._master.in_op = True
-        self._master.do_check_state = False
-        SlaveSet = namedtuple('SlaveSet', 'name product_code config_func')
-        self._expected_slave_layout = {0: SlaveSet('RFT64', self.TFSENSOR_PRODUCT_CODE, self.tfsensor_setup)}
-                                    #  1: SlaveSet('RFT64', self.TFSENSOR_PRODUCT_CODE, self.tfsensor_setup)}
-        self.collapse_time = 0.0
+        self._actual_wkc = 0
 
-        self._bias = Wrench()
+        self._master = pysoem.Master()
+        self._master.in_op = False
+        self._master.do_check_state = False
+
+        SlaveSet = namedtuple('SlaveSet', 'name product_code config_func')
+        self._expected_slave_layout = {0: SlaveSet('CU1128', self.CU1128_PRODUCT_CODE, self.cu1128_setup)
+                                        ,1: SlaveSet('RFT64', self.TFSENSOR_PRODUCT_CODE, self.tfsensor_setup)
+                                        ,2: SlaveSet('CU1128-C', self.CU1128_PRODUCT_CODE, self.cu1128_setup)
+                                        ,3: SlaveSet('CU1128-D', self.CU1128_PRODUCT_CODE, self.cu1128_setup)}
+        # self.collapse_time = 0.0
 
         self._master.open(self._ifname)
-        
         if not self._master.config_init() > 0:
             self._master.close()
             raise InterfaceError('no slave found')
         
         for i, slave in enumerate(self._master.slaves):
-            if not ((slave.man == self.BECKHOFF_VENDOR_ID) and
+            print("slave add ...")
+            if not (((slave.man == self.BECKHOFF_VENDOR_ID) or (slave.man == self.CU1128_VENDOR_ID)) and
                     (slave.id == self._expected_slave_layout[i].product_code)):
                 self._master.close()
                 raise InterfaceError('unexpected slave layout')
@@ -62,13 +64,14 @@ class RFT64:
 
         print("Sensor initalized with PDO map: {}", self._master.config_map())
 
-        self._master.write_state()
-        self.slave.sdo_write(0x7000, 1, struct.pack('<I', 0x0000000B))
-        
-        # if self._master.state_check(pysoem.SAFEOP_STATE, 50000) != pysoem.SAFEOP_STATE:
-        #     self._master.close()
-        #     raise InterfaceError('not all slaves reached SAFEOP state')
 
+        self._master.config_map()
+
+        # ROS
+        rospy.init_node('robotous_ft')
+        # rospy.init_node('RFT64', anonymous=True)
+        self.rate = rospy.Rate(1000)
+        
         # ROS publisher
         self.Model_name_pub = rospy.Publisher("Model_name", String, queue_size=1)
         self.Serial_number_pub = rospy.Publisher("Serial_number", String, queue_size=1)
@@ -87,8 +90,9 @@ class RFT64:
         self.set_bias_server = rospy.Service("set_as_bias", set_as_bias, self.set_as_bias)
         self.unset_bias_server = rospy.Service("unset_bias", set_as_bias, self.unset_bias)
 
+        self._bias = Wrench()
 
-        print('RFT64 interface started')
+        print('RFT64 interface node started..!')
 
     def set_ft_rate(self, req):
         rate = req.rate
@@ -99,7 +103,7 @@ class RFT64:
         return res
 
     def set_as_bias(self, req):
-        # New way to setting BIAS. But it is not available for RFT80 or RFT64
+        # New way to setting BIAS. But it is not available for RFT80_6A01 or RFT64_6A02
         # self.slave.sdo_write(0x7000, 1, struct.pack('I', 0x0000000B))
         # self.slave.sdo_write(0x7000, 1, struct.pack('I', 0x00000011))
 
@@ -166,13 +170,17 @@ class RFT64:
         overload_count_msg.torque.z = self.overload_count_Tz
         self.Overload_count_pub.publish(overload_count_msg)
 
+    def cu1128_setup(self, slave_pos):
+        slave = self._master.slaves[slave_pos]
+
     def tfsensor_setup(self, slave_pos):
         print("Initialize sensor...")
         slave = self._master.slaves[slave_pos]
         self.slave = slave
 
         ### Sensor Information ###
-        self.Model_name = slave.sdo_read(0x2000, 1).decode('utf-8')
+        name_list = slave.sdo_read(0x2000, 1).decode('utf-8')
+        self.Model_name = name_list.rstrip('\0')
         self.Serial_number = slave.sdo_read(0x2000, 2).decode('utf-8')
         self.Firmware_version = slave.sdo_read(0x2000, 3).decode('utf-8')
 
@@ -188,12 +196,8 @@ class RFT64:
         self.overload_count_Ty = int.from_bytes(slave.sdo_read(0x2002, 5), byteorder='little', signed=False)
         self.overload_count_Tz = int.from_bytes(slave.sdo_read(0x2002, 6), byteorder='little', signed=False)
 
-        slave.dc_sync(True, 1000000, 0, 1000000)
 
     def getSensor(self):
-        # self._master.read_state()
-        self._master.receive_processdata(500)
-        # self._master.write_state()
         ### TxPDO ###
         # Force-torque
         TxPDO_Fx = ctypes.c_float.from_buffer_copy(self.slave.sdo_read(0x6000, 1))
@@ -209,7 +213,7 @@ class RFT64:
         # Process FT data
         tf_data_msg = WrenchStamped()
         tf_data_msg.header.stamp = rospy.Time.now()
-        tf_data_msg.header.frame_id = 'RFT64-6A01'
+        tf_data_msg.header.frame_id = self.Model_name
         tf_data_msg.wrench.force.x = TxPDO_Fx.value - self._bias.force.x
         tf_data_msg.wrench.force.y = TxPDO_Fy.value - self._bias.force.y
         tf_data_msg.wrench.force.z = TxPDO_Fz.value - self._bias.force.z
@@ -250,47 +254,67 @@ class RFT64:
         self.Temperature_pub.publish(temperature_msg)
 
     def getSensorPDO(self):
-        transmits = self._master.send_processdata()
-        self._master.write_state()
-        self._master.read_state()
-        if(transmits > 0):
-            pdos = self._master.receive_processdata()
-            # print(pdos)
-            # if(pdos > 1):
-            Fx, Fy, Fz, Tx, Ty, Tz, FT_Status, Temp = struct.unpack('ffffffHf', pdos)
-            print(Fz)
+        self._master.send_processdata()
+        self._master.receive_processdata(2000)
+        pdos = self._master.slaves[1].input
+        Fx, Fy, Fz, Tx, Ty, Tz, FT_Status, Temp = struct.unpack('ffffffIf', pdos)
+
+        # Process FT data
+        tf_data_msg = WrenchStamped()
+        tf_data_msg.header.stamp = rospy.Time.now()
+        tf_data_msg.header.frame_id = self.Model_name
+        tf_data_msg.wrench.force.x = Fx - self._bias.force.x
+        tf_data_msg.wrench.force.y = Fy - self._bias.force.y
+        tf_data_msg.wrench.force.z = Fz - self._bias.force.z
+        tf_data_msg.wrench.torque.x = Tx - self._bias.torque.x
+        tf_data_msg.wrench.torque.y = Ty - self._bias.torque.y
+        tf_data_msg.wrench.torque.z = Tz - self._bias.torque.z
+        
+        # Process FTS-Status
+        FTS_status_msg = WrenchStamped()
+        FTS_status_msg.header = tf_data_msg.header
+
+        share = 0
+        if (FT_Status % 2 == 1):
+            FTS_status_msg.wrench.torque.z = 1
+        share = FT_Status // 2
+        if (share % 2 == 1):
+            FTS_status_msg.wrench.torque.y = 1
+        share =  share // 2
+        if (share % 2 == 1):
+            FTS_status_msg.wrench.torque.x = 1
+        share =  share // 2
+        if (share % 2 == 1):
+            FTS_status_msg.wrench.force.z = 1
+        share =  share // 2
+        if (share % 2 == 1):
+            FTS_status_msg.wrench.force.y = 1
+        share =  share // 2
+        if (share % 2 == 1):
+            FTS_status_msg.wrench.force.x = 1
+
+        # Process Temperature
+        temperature_msg = Float64()
+        temperature_msg.data = Temp
+
+        self.FT_data_pub.publish(tf_data_msg)
+        self.FTS_status_pub.publish(FTS_status_msg)
+        self.Temperature_pub.publish(temperature_msg)
 
     def run(self):
-        time1 = rospy.Time.now().to_sec()
-        # self._master = pysoem.Master()
-        # self._master.open(self._ifname)
+        self._master.state = pysoem.OP_STATE
+        self._master.write_state()
 
-        # if not self._master.config_init() > 0:
-        #     self._master.close()
-        #     raise InterfaceError('no slave found')
-        # for i, slave in enumerate(self._master.slaves):
-        #     if not ((slave.man == self.BECKHOFF_VENDOR_ID) and
-        #             (slave.id == self._expected_slave_layout[i].product_code)):
-        #         self._master.close()
-        #         raise InterfaceError('unexpected slave layout')
-        #     slave.config_func = self._expected_slave_layout[i].config_func
-        #     slave.is_lost = False
-        
-        # self._master.read_state()
-        # self._master.receive_processdata()
-        # print(i)
-        # self._expected_slave_layout[0].config_func
-        self.getSensor()
-        # self.getSensorPDO()
-        # is_lost = False
-        # for i, slave in enumerate(self._master.slaves):
-        #     print(i)
-        #     slave.config_func = self._expected_slave_layout[0].config_func
-        #     slave.is_lost = False
-        time2 = rospy.Time.now().to_sec()
-        print(time2-time1)
-
-        # self._master.close()
+        try:
+            while not rospy.is_shutdown():
+                # interface.getSensor()
+                # interface.run()
+                self.getSensorPDO()
+                self.pub_sensor_info()
+                self.rate.sleep()
+        except InterfaceError as expt:
+            print('RFT64 failed: ' + expt.message)
+            sys.exit(1)
 
 class InterfaceError(Exception):
     def __init__(self, message):
@@ -299,16 +323,9 @@ class InterfaceError(Exception):
 
 def main():
     if len(sys.argv) > 1:
-        interface = RFT64(sys.argv[1])
-        try:
-            while not rospy.is_shutdown():
-                # interface.getSensor()
-                interface.run()
-                interface.pub_sensor_info()
-                interface.rate.sleep()
-        except InterfaceError as expt:
-            print('RFT64 failed: ' + expt.message)
-            sys.exit(1)
+        interface = ROBOTOUS_FT(sys.argv[1])
+        interface.run()
+
     else:
         print('usage: RFT64 ifname')
         sys.exit(1)
