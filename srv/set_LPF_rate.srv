@@ -1,3 +1,4 @@
-std_msgs/Int32 rate
+int16 sensor_idx
+int16 rate
 ---
-std_msgs/Int32 rate
+int16 rate

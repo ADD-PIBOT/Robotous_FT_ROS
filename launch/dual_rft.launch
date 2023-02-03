@@ -1,3 +1,12 @@
 <launch>
-    <node name="rft_rqt_plot" pkg="rqt_gui" type="rqt_gui" args=" --perspective-file $(find rft64_6a01_ros_interface)/rqt/yoke_rudder.perspective"/>
+    <!-- <arg name="network_interface" default="enx705dccfe7579"/> -->
+    <!-- <arg name="network_interface" default="enx00e04cca5466"/>  DOCKHUB -->
+    <arg name="network_interface" default="enx0c37961999e8"/> <!-- USB Ethernet -->
+    <!-- <arg name="network_interface" default="enxd85ed38894a9"/>  AERO -->
+    <arg name="use_gui" default="False"/>
+
+    <node name="rft_interface_node" pkg="rft64_6a01_ros_interface" type="dual_rft.py" output="screen" args="$(arg network_interface)"/>
+    <group if="$(arg use_gui)">
+        <node name="rft_rqt_plot" pkg="rqt_gui" type="rqt_gui" args=" --perspective-file $(find rft64_6a01_ros_interface)/rqt/dual_rft.perspective"/>
+    </group>
 </launch>
